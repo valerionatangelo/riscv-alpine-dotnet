@@ -80,7 +80,13 @@ if (Test-Path $DotnetDir) {
 }
 
 Write-Host 'Cloning (shallow, single-branch)...'
-git clone --single-branch --depth 1 -b $BRANCH $CloneUrl $DotnetDir
+# core.autocrlf=false is required: the VMR contains shell scripts whose shebang
+# lines must use LF endings. With the Windows default (autocrlf=true) git would
+# convert LF to CRLF, producing '#!/usr/bin/env bash\r' which fails inside the
+# Linux build container.
+git clone --single-branch --depth 1 -b $BRANCH `
+    --config core.autocrlf=false `
+    $CloneUrl $DotnetDir
 if ($LASTEXITCODE -ne 0) { Write-Error "git clone failed (exit $LASTEXITCODE)" }
 
 Write-Host ''
