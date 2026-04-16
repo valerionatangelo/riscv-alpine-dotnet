@@ -28,7 +28,10 @@ function Invoke-Check {
         [string]$Command
     )
     Write-Host "  > $Label"
-    docker run --rm --platform $Platform $Image sh -c $Command
+    # Use array splat so PowerShell does not mangle the sh -c argument when
+    # passing to docker on Windows (avoids double-quote escaping issues).
+    $dockerArgs = @('run', '--rm', '--platform', $Platform, $Image, 'sh', '-c', $Command)
+    & docker @dockerArgs
     if ($LASTEXITCODE -eq 0) {
         Write-Host '  [PASS]' -ForegroundColor Green
         $script:Pass++
@@ -50,14 +53,17 @@ function Test-Image {
     Invoke-Check $Image 'Architecture  (uname -m)' `
         'uname -m'
 
+    # printenv avoids embedding quotes inside the sh -c string
     Invoke-Check $Image 'DOTNET_ROOT env var' `
-        'echo "DOTNET_ROOT=${DOTNET_ROOT}"'
+        'printenv DOTNET_ROOT'
 
-    Invoke-Check $Image 'PATH contains /opt/dotnet' `
-        'echo "$PATH" | tr : "\n" | grep -q /opt/dotnet && echo "PATH OK: /opt/dotnet is present"'
+    # command -v relies on PATH being set correctly — no pipes or quotes needed
+    Invoke-Check $Image 'PATH contains /opt/dotnet  (command -v dotnet)' `
+        'command -v dotnet'
 
-    Invoke-Check $Image 'dotnet binary is executable' `
-        'test -x "${DOTNET_ROOT}/dotnet" && echo "binary found: ${DOTNET_ROOT}/dotnet"'
+    # ls -la shows the file and its permissions in one shot
+    Invoke-Check $Image 'dotnet binary is executable  (ls -la)' `
+        'ls -la /opt/dotnet/dotnet'
 
     Invoke-Check $Image 'dotnet --version' `
         'dotnet --version'

@@ -31,10 +31,6 @@ $RepoRoot  = Split-Path -Parent $ScriptDir
 $DotnetDir       = Join-Path $RepoRoot $DOTNET_SRC_DIRNAME
 $OfficialBuildId = (Get-Date -Format 'yyyyMMdd') + '.99'
 
-# Docker Desktop on Windows needs forward-slash paths for volume mounts.
-# Convert-Path gives us the fully qualified Windows path; replace \ with /.
-$DotnetDirFwd = (Resolve-Path $DotnetDir).Path.Replace('\', '/')
-
 Write-Host '============================================================'
 Write-Host ' 03-build-sdk.ps1 — Build .NET SDK (linux-musl-riscv64)'
 Write-Host '============================================================'
@@ -52,6 +48,11 @@ Write-Host ''
 if (-not (Test-Path (Join-Path $DotnetDir '.git'))) {
     Write-Error "'$DotnetDir' is not a git repo. Run 01-clone.ps1 (and optionally 02-patch.ps1) first."
 }
+
+# Docker Desktop on Windows accepts forward-slash paths in -v bindings.
+# Resolve-Path is called here (after the existence check) so it doesn't crash
+# with a confusing error if the directory hasn't been cloned yet.
+$DotnetDirFwd = (Resolve-Path $DotnetDir).Path.Replace('\', '/')
 
 # Pull the prereqs image first so any authentication errors are visible early
 Write-Host 'Pulling prereqs image (may take a few minutes on first run)…'
