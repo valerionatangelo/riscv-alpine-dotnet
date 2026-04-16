@@ -1,0 +1,60 @@
+# =============================================================================
+# Dockerfile.runtime — Alpine riscv64 image with .NET Runtime only (no SDK)
+# =============================================================================
+#
+# Smaller than Dockerfile.sdk.  Uses a two-stage build:
+#   Stage 1 (extractor): expands the SDK tarball
+#   Stage 2 (final):     copies only the runtime components
+#
+# Runtime subset copied:
+#   dotnet                                     host binary
+#   shared/Microsoft.NETCore.App/<ver>/        CoreCLR runtime
+#   shared/Microsoft.AspNetCore.App/<ver>/     ASP.NET shared framework
+#
+# SDK tools (MSBuild, Roslyn compiler, NuGet, etc.) are NOT included.
+# Use this image for running compiled .NET applications, not building them.
+#
+# =============================================================================
+
+ARG ALPINE_VERSION=edge
+
+# ── Stage 1: extract the full SDK so we can pick pieces from it ───────────────
+FROM --platform=linux/riscv64 alpine:${ALPINE_VERSION} AS extractor
+
+ARG SDK_TARBALL
+COPY ${SDK_TARBALL} /tmp/dotnet.tar.gz
+
+RUN mkdir -p /sdk \
+    && tar -xzf /tmp/dotnet.tar.gz -C /sdk \
+    && rm /tmp/dotnet.tar.gz
+
+
+# ── Stage 2: runtime-only final image ─────────────────────────────────────────
+FROM --platform=linux/riscv64 alpine:${ALPINE_VERSION}
+
+RUN apk add --no-cache \
+        ca-certificates \
+        libssl3 \
+        libgcc \
+        libstdc++ \
+        zlib \
+        icu-libs \
+    && rm -rf /var/cache/apk/*
+
+RUN mkdir -p /opt/dotnet/shared
+
+# Copy the host binary and the runtime shared frameworks
+COPY --from=extractor /sdk/dotnet                              /opt/dotnet/dotnet
+COPY --from=extractor /sdk/shared/Microsoft.NETCore.App        /opt/dotnet/shared/Microsoft.NETCore.App
+# Remove the next line if you only need the base CoreCLR runtime (no ASP.NET)
+COPY --from=extractor /sdk/shared/Microsoft.AspNetCore.App     /opt/dotnet/shared/Microsoft.AspNetCore.App
+
+# ── Environment ────────────────────────────────────────────────────────────────
+ENV DOTNET_ROOT=/opt/dotnet
+ENV PATH="${PATH}:/opt/dotnet"
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
+ENV DOTNET_NOLOGO=1
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+
+# ── Default command ────────────────────────────────────────────────────────────
+CMD ["dotnet", "--info"]

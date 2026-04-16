@@ -1,0 +1,61 @@
+# =============================================================================
+# Dockerfile.sdk — Alpine riscv64 image with the full .NET SDK
+# =============================================================================
+#
+# Built by 05-build-image.ps1, or manually:
+#
+#   # Stage the tarball
+#   New-Item -ItemType Directory docker\context -Force
+#   Copy-Item dotnet-src\artifacts\...\dotnet-sdk-*-linux-musl-riscv64.tar.gz docker\context\
+#
+#   # Register QEMU (if not already done)
+#   docker run --privileged --rm tonistiigi/binfmt --install riscv64
+#
+#   # Build
+#   docker buildx build `
+#     --platform linux/riscv64 --load `
+#     --build-arg SDK_TARBALL=dotnet-sdk-<ver>-linux-musl-riscv64.tar.gz `
+#     -t dotnet-alpine-riscv64:sdk `
+#     -f docker\Dockerfile.sdk docker\context\
+#
+# =============================================================================
+
+ARG ALPINE_VERSION=edge
+FROM --platform=linux/riscv64 alpine:${ALPINE_VERSION}
+
+# ── Native runtime dependencies ───────────────────────────────────────────────
+# Minimum packages required to host the .NET musl runtime on Alpine.
+# No gcompat/glibc needed — the SDK tarball targets musl directly.
+#
+# To skip ICU (smaller image, no culture-sensitive ops):
+#   remove icu-libs and set ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=true
+RUN apk add --no-cache \
+        ca-certificates \
+        libssl3 \
+        libgcc \
+        libstdc++ \
+        zlib \
+        icu-libs \
+    && rm -rf /var/cache/apk/*
+
+# ── Install the SDK ────────────────────────────────────────────────────────────
+ARG SDK_TARBALL
+COPY ${SDK_TARBALL} /tmp/dotnet.tar.gz
+
+RUN mkdir -p /opt/dotnet \
+    && tar -xzf /tmp/dotnet.tar.gz -C /opt/dotnet \
+    && rm /tmp/dotnet.tar.gz \
+    # Smoke-test: binary must be present after extraction
+    && test -x /opt/dotnet/dotnet
+
+# ── Environment ────────────────────────────────────────────────────────────────
+ENV DOTNET_ROOT=/opt/dotnet
+ENV PATH="${PATH}:/opt/dotnet"
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
+ENV DOTNET_NOLOGO=1
+# Full Unicode/globalization support (requires icu-libs above).
+# Flip to "true" to drop icu-libs and shrink the image.
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+
+# ── Default command ────────────────────────────────────────────────────────────
+CMD ["dotnet", "--info"]

@@ -1,0 +1,5 @@
+# The dotnet VMR clone is large (~20 GB) — never commit it
+dotnet-src/
+
+# Docker build context staging area (contains a copy of the large tarball)
+docker/context/
