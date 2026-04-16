@@ -77,8 +77,8 @@ if ($Images) {
 
     foreach ($Tag in @($IMAGE_TAG_SDK, $IMAGE_TAG_RUNTIME)) {
         $Ref = "${IMAGE_NAME}:${Tag}"
-        $null = docker image inspect $Ref 2>&1
-        if ($LASTEXITCODE -eq 0) {
+        $ImageId = docker image ls -q $Ref
+        if ($ImageId) {
             Write-Host "  Removing image $Ref..."
             docker rmi $Ref
             if ($LASTEXITCODE -ne 0) {
