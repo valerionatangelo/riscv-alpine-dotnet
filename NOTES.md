@@ -15,6 +15,7 @@ RiscvDotnet\
 ├── .gitignore
 ├── scripts\
 │   ├── config.ps1                  Shared variables — edit to customise
+│   ├── 00-clean.ps1                Remove previous / failed build state
 │   ├── 01-clone.ps1                Clone the dotnet VMR
 │   ├── 02-patch.ps1                Apply the linux-musl-riscv64 runtime patch
 │   ├── 03-build-sdk.ps1            Run the cross-compilation build in Docker
@@ -25,7 +26,7 @@ RiscvDotnet\
 ├── docker\
 │   ├── Dockerfile.sdk              Full SDK image  (dotnet-alpine-riscv64:sdk)
 │   └── Dockerfile.runtime          Runtime-only image (dotnet-alpine-riscv64:runtime)
-└── dotnet-src\                     Created by 01-clone.ps1  (~20 GB, git-ignored)
+└── dotnet-src\                     Created by 01-clone.ps1  (~435 MB clone, git-ignored)
 ```
 
 ---
@@ -40,6 +41,17 @@ RiscvDotnet\
 | PowerShell | 5.1+ (built into Windows) or PowerShell 7 |
 | ~50 GB free disk | Docker Desktop disk image must be large enough |
 | Time | The SDK build (step 3) takes **2–8 hours** on a modern PC |
+| Windows long-path support | The dotnet VMR contains paths > 260 chars. See below. |
+
+**Windows long-path support (required before cloning)**
+
+Run once in an elevated (Admin) PowerShell:
+```powershell
+Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
+    -Name LongPathsEnabled -Value 1 -Force
+```
+No reboot needed — takes effect for new processes immediately. `01-clone.ps1`
+checks for this and aborts with instructions if it is not set.
 
 **Execution policy**: if you get a script policy error, run once in an elevated
 PowerShell prompt:
@@ -171,7 +183,62 @@ A passing `06-validate.ps1` run looks like:
 
 ---
 
+## Cleaning up / Retrying a failed build
+
+Use `00-clean.ps1` to remove stale build state before retrying.  Three levels:
+
+```powershell
+# Default — remove build artifacts + docker context, keep the clone
+# (fastest retry: avoids re-downloading the 435 MB VMR)
+.\scripts\00-clean.ps1
+
+# Also remove the dotnet-src clone (re-clone on next run)
+.\scripts\00-clean.ps1 -Full
+
+# Also remove the built Docker images from the local daemon
+.\scripts\00-clean.ps1 -Images
+
+# Nuclear option — everything gone, truly fresh start
+.\scripts\00-clean.ps1 -Full -Images
+```
+
+What each level removes:
+
+| Flag(s) | What is removed |
+|---|---|
+| *(none)* | `dotnet-src\artifacts\`, `dotnet-src\.packages\`, `dotnet-src\.dotnet\`, `docker\context\` |
+| `-Full` | Everything above **+** the `dotnet-src\` clone itself |
+| `-Images` | Everything above **+** `dotnet-alpine-riscv64:sdk` and `:runtime` images |
+| `-Full -Images` | Complete reset |
+
+You can also pass flags to `run-all.ps1` to clean before the pipeline runs:
+
+```powershell
+# Wipe artifacts first, then run the full pipeline (clone is kept)
+.\scripts\run-all.ps1 -Clean
+
+# Wipe everything including the clone, then run the full pipeline
+.\scripts\run-all.ps1 -FullClean
+```
+
+---
+
 ## Troubleshooting
+
+**`Filename too long` / `error: unable to create file` during clone (exit 128)**
+The dotnet VMR contains file paths exceeding Windows' default 260-character
+limit.  Fix with one admin command (no reboot needed):
+```powershell
+Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' `
+    -Name LongPathsEnabled -Value 1 -Force
+```
+Then remove the partial clone and retry:
+```powershell
+Remove-Item -Recurse -Force dotnet-src
+.\scripts\01-clone.ps1
+```
+`01-clone.ps1` now checks this automatically and aborts early if the key is not
+set, so you will see a clear error message before any download starts.
 
 **Script execution policy error**
 ```powershell

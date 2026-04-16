@@ -4,6 +4,7 @@
 #
 # Runs every step in sequence.  You can also run steps individually:
 #
+#   .\scripts\00-clean.ps1           # Clean previous / failed build state
 #   .\scripts\01-clone.ps1           # Clone dotnet VMR
 #   .\scripts\02-patch.ps1           # Apply linux-musl-riscv64 patch
 #   .\scripts\03-build-sdk.ps1       # *** 2–8 hours — run this and wait ***
@@ -14,12 +15,19 @@
 #
 # Usage:
 #   cd C:\...\RiscvDotnet
-#   .\scripts\run-all.ps1
+#   .\scripts\run-all.ps1                     # Normal run
+#   .\scripts\run-all.ps1 -Clean              # Wipe artifacts first, keep clone
+#   .\scripts\run-all.ps1 -Clean -FullClean   # Wipe everything including clone
 #
 # Override defaults before running:
 #   $env:FORK = "my-fork"; $env:BRANCH = "release/10.0"; $env:BRANDING = "release"
 #   .\scripts\run-all.ps1
 # =============================================================================
+param(
+    [switch]$Clean,      # Run 00-clean.ps1 before the pipeline (keeps clone)
+    [switch]$FullClean   # Run 00-clean.ps1 -Full -Images before the pipeline
+)
+
 $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
@@ -31,6 +39,16 @@ function Write-Header([string]$Title) {
     Write-Host ''
 }
 
+# ── Optional cleanup ──────────────────────────────────────────────────────────
+if ($FullClean) {
+    Write-Header 'Pre-step — Full clean (artifacts + clone + images)'
+    & "$ScriptDir\00-clean.ps1" -Full -Images
+} elseif ($Clean) {
+    Write-Header 'Pre-step — Clean artifacts + docker context (clone kept)'
+    & "$ScriptDir\00-clean.ps1"
+}
+
+# ── Main pipeline ─────────────────────────────────────────────────────────────
 Write-Header 'Step 1/5 — Clone dotnet VMR'
 & "$ScriptDir\01-clone.ps1"
 
