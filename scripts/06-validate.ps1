@@ -80,7 +80,7 @@ $SdkImage     = "${IMAGE_NAME}:${IMAGE_TAG_SDK}"
 $RuntimeImage = "${IMAGE_NAME}:${IMAGE_TAG_RUNTIME}"
 
 foreach ($Img in @($SdkImage, $RuntimeImage)) {
-    $Exists = docker image inspect $Img 2>$null
+    $null = docker image inspect $Img 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "Image '$Img' not found locally - skipping. Run 05-build-image.ps1 first."
         continue
