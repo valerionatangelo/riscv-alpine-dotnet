@@ -20,6 +20,19 @@
 #   - --clean-while-building removes intermediates early to save disk space
 #   - Expected time: 2-8 hours.  Required disk: ~50 GB free.
 #
+# Windows filesystem note:
+#   NuGet extracts .nupkg files (including DLL assemblies) to package caches
+#   during the build.  When the cache lives on a Windows (NTFS) bind-mount,
+#   Windows Defender or NTFS security policies silently drop the DLL files,
+#   leaving only XML docs.  This causes CS0246 "type not found" errors when
+#   the compiler tries to reference those assemblies.
+#
+#   Fix: the two NuGet package cache directories (.packages and
+#   src/source-build-reference-packages/artifacts/.packages) are mounted as
+#   Docker named volumes (true Linux ext4 filesystem) so DLLs are preserved.
+#   The final SDK tarball in artifacts/assets/... is still on the Windows
+#   bind-mount so it remains accessible from Windows after the build.
+#
 # Override: $env:BRANDING = 'release'
 # =============================================================================
 $ErrorActionPreference = 'Stop'
@@ -31,6 +44,12 @@ $RepoRoot  = Split-Path -Parent $ScriptDir
 $DotnetDir       = Join-Path $RepoRoot $DOTNET_SRC_DIRNAME
 $OfficialBuildId = (Get-Date -Format 'yyyyMMdd') + '.99'
 
+# Docker named volumes for NuGet package caches.
+# Using the image name as a prefix keeps volumes associated with this project.
+$VolPackages     = "${IMAGE_NAME}-dotnet-packages"
+$VolSbrpPackages = "${IMAGE_NAME}-sbrp-packages"
+$VolDotnetSdk    = "${IMAGE_NAME}-dotnet-sdk"
+
 Write-Host '============================================================'
 Write-Host ' 03-build-sdk.ps1 - Build .NET SDK (linux-musl-riscv64)'
 Write-Host '============================================================'
@@ -40,6 +59,9 @@ Write-Host "  ROOTFS_DIR      : $ROOTFS_DIR  (inside container)"
 Write-Host "  Target RID      : $RID"
 Write-Host "  Branding        : $BRANDING"
 Write-Host "  OfficialBuildId : $OfficialBuildId"
+Write-Host "  Vol (.packages) : $VolPackages"
+Write-Host "  Vol (sbrp pkgs) : $VolSbrpPackages"
+Write-Host "  Vol (.dotnet)   : $VolDotnetSdk"
 Write-Host ''
 Write-Host '  *** This build typically takes 2-8 hours. ***'
 Write-Host '  *** Ensure at least 50 GB of free disk space in Docker Desktop. ***'
@@ -62,19 +84,21 @@ Write-Host ''
 
 Write-Host 'Starting SDK build...'
 
-# Build the argument list as an array to avoid PowerShell quoting issues on Windows.
+# Pre-build script run inside the container before invoking build.sh:
 #
-# core.fileMode=false is set before the build because the VMR is on a Windows
-# (NTFS) filesystem mounted into Linux: NTFS has no Unix execute bit, so every
-# file appears as 100755 to Linux.  Without this flag the source-build
-# infrastructure git-checks report false "permission changed" errors for .proj
-# files (expected 100644, got 100755) and the build fails.
+# 1. git config --global core.fileMode false
+#    Must be GLOBAL so all git invocations inherit it, including those that run
+#    with GIT_DIR=/dev/null (ApplyPatches in source-build-reference-packages).
+#    NTFS has no Unix execute bit, so every file appears as 100755; without
+#    this flag the source-build patch-apply step fails with "expected 100644".
+#
+# 2. git -C /dotnet config core.fileMode false
+#    Belt-and-suspenders: also set on the repo itself.
+#
+# 3. Pre-create the package cache directories inside the Docker volumes so they
+#    exist before the bind-mount of /dotnet (which might create empty dirs on
+#    the Windows side).  This is defensive; Docker usually handles this.
 $BuildScript = (
-    # core.fileMode=false must be set GLOBALLY so it is inherited by every git
-    # invocation during the build, including those run with GIT_DIR=/dev/null
-    # (used by the ApplyPatches MSBuild target in source-build-reference-packages).
-    # A repo-local setting on /dotnet is ignored when GIT_DIR=/dev/null bypasses
-    # normal git-directory discovery.
     "git config --global core.fileMode false && " +
     "git -C /dotnet config core.fileMode false && " +
     "./build.sh" +
@@ -88,11 +112,20 @@ $BuildScript = (
     " -p:OfficialBuildId=$OfficialBuildId"
 )
 
+# Volume mounts:
+#   /dotnet                    - Windows bind-mount (source + final tarball)
+#   /dotnet/.packages          - Docker volume (NuGet global cache, needs real Linux FS for DLL extraction)
+#   /dotnet/.dotnet            - Docker volume (bootstrapped SDK, needs real Linux FS)
+#   /dotnet/src/source-build-reference-packages/artifacts/.packages
+#                              - Docker volume (SBRP NuGet cache, same reason)
 $dockerArgs = @(
     'run',
     '--platform', 'linux/amd64',
     '--rm',
     '-v', "${DotnetDirFwd}:/dotnet",
+    '-v', "${VolPackages}:/dotnet/.packages",
+    '-v', "${VolDotnetSdk}:/dotnet/.dotnet",
+    '-v', "${VolSbrpPackages}:/dotnet/src/source-build-reference-packages/artifacts/.packages",
     '-w', '/dotnet',
     '-e', "ROOTFS_DIR=$ROOTFS_DIR",
     $PREREQS_IMAGE,

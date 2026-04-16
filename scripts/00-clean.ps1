@@ -59,12 +59,30 @@ Write-Host ''
 Write-Host '[3] Docker build context staging area (docker\context\)'
 Remove-IfExists $DockerContextDir 'docker context (staged tarball)'
 
-# -- -Full: also remove the clone itself --------------------------------------
+# -- -Full: also remove the clone and Docker named volumes --------------------
 if ($Full) {
     Write-Host ''
-    Write-Host '[4] dotnet-src clone  (-Full specified)'
+    Write-Host '[4] dotnet-src clone + Docker named volumes  (-Full specified)'
     Remove-IfExists $DotnetDir 'dotnet-src clone'
     Write-Host '    Next run of 01-clone.ps1 will re-download ~435 MB.'
+
+    # Remove the Docker named volumes used for NuGet package caches.
+    # These live on the Linux side of Docker Desktop (not on the Windows filesystem)
+    # and must be cleaned explicitly when starting fresh.
+    foreach ($Vol in @(
+        "${IMAGE_NAME}-dotnet-packages",
+        "${IMAGE_NAME}-sbrp-packages",
+        "${IMAGE_NAME}-dotnet-sdk"
+    )) {
+        $VolExists = docker volume ls -q --filter "name=^${Vol}$"
+        if ($VolExists) {
+            Write-Host "  Removing Docker volume $Vol..."
+            docker volume rm $Vol | Out-Null
+            Write-Host "  Removed."
+        } else {
+            Write-Host "  Docker volume $Vol - not present, skipping."
+        }
+    }
 } else {
     Write-Host ''
     Write-Host '[4] dotnet-src clone  (skipped - use -Full to also remove the clone)'
