@@ -8,8 +8,6 @@ Local reproduction of [build.yml](build.yml) targeting a `linux-musl-riscv64`
 
 ## Directory layout
 
-After you create `scripts\` and `docker\` folders and place the files inside:
-
 ```
 RiscvDotnet\
 ├── build.yml                       Reference workflow (read-only)
@@ -29,16 +27,6 @@ RiscvDotnet\
 │   └── Dockerfile.runtime          Runtime-only image (dotnet-alpine-riscv64:runtime)
 └── dotnet-src\                     Created by 01-clone.ps1  (~20 GB, git-ignored)
 ```
-
-> **Setup note**: Because of how the workspace is mounted, scripts and Dockerfiles
-> are delivered as flat files in the root of this folder.  Before running, create
-> the `scripts\` and `docker\` subdirectories and move the files:
->
-> ```powershell
-> mkdir scripts, docker
-> Move-Item config.ps1, 0*.ps1, run-all.ps1   scripts\
-> Move-Item Dockerfile.*                        docker\
-> ```
 
 ---
 
