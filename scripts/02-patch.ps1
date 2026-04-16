@@ -1,9 +1,9 @@
 #Requires -Version 5.1
 # =============================================================================
-# 02-patch.ps1 — Apply the linux-musl-riscv64 runtime patch
+# 02-patch.ps1 - Apply the linux-musl-riscv64 runtime patch
 #
 # Mirrors the "Apply patches" step in build.yml:
-#   curl … | git apply -v --directory=src/runtime   (with || true)
+#   curl ... | git apply -v --directory=src/runtime   (with || true)
 #
 # The patch (am11/runtime fa6e00a) is needed for .NET 10 linux-musl-riscv64.
 # It is applied with failure allowed (same as build.yml) because it may
@@ -20,7 +20,7 @@ $PatchUrl   = 'https://github.com/am11/runtime/commit/fa6e00abe9be4a451d81a29309
 $PatchSubdir = 'src/runtime'
 
 Write-Host '============================================================'
-Write-Host ' 02-patch.ps1 — Apply runtime patch'
+Write-Host ' 02-patch.ps1 - Apply runtime patch'
 Write-Host '============================================================'
 Write-Host "  Patch URL : $PatchUrl"
 Write-Host "  Apply dir : $PatchSubdir  (relative to dotnet VMR root)"
@@ -33,17 +33,17 @@ if (-not (Test-Path (Join-Path $DotnetDir '.git'))) {
 # Download patch to a temp file (Invoke-WebRequest is the PowerShell-native curl)
 $TempPatch = [System.IO.Path]::GetTempFileName()
 try {
-    Write-Host 'Downloading patch…'
+    Write-Host 'Downloading patch...'
     Invoke-WebRequest -Uri $PatchUrl -OutFile $TempPatch -UseBasicParsing
 
-    Write-Host 'Applying patch (failure is non-fatal — may already be included in branch)…'
+    Write-Host "Applying patch (failure is non-fatal - may already be included in branch)..."
     git -C $DotnetDir apply -v --directory=$PatchSubdir $TempPatch
     if ($LASTEXITCODE -eq 0) {
         Write-Host ''
         Write-Host 'Patch applied successfully.'
     } else {
         Write-Host ''
-        Write-Warning "git apply returned exit code $LASTEXITCODE — continuing anyway (matches build.yml '|| true' behaviour)."
+        Write-Warning "git apply returned exit code $LASTEXITCODE - continuing anyway (matches build.yml '|| true' behaviour)."
     }
 } finally {
     Remove-Item $TempPatch -ErrorAction SilentlyContinue

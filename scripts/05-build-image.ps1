@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # =============================================================================
-# 05-build-image.ps1 — Build Alpine riscv64 Docker images from the SDK tarball
+# 05-build-image.ps1 - Build Alpine riscv64 Docker images from the SDK tarball
 #
 # Steps:
 #   1. Locate the SDK tarball (calls 04-find-artifact.ps1)
@@ -24,43 +24,43 @@ $DockerDir        = Join-Path $RepoRoot 'docker'
 $DockerContextDir = Join-Path $DockerDir 'context'
 
 Write-Host '============================================================'
-Write-Host ' 05-build-image.ps1 — Build Alpine riscv64 Docker images'
+Write-Host ' 05-build-image.ps1 - Build Alpine riscv64 Docker images'
 Write-Host '============================================================'
 
-# ── 1. Locate the SDK tarball ──────────────────────────────────────────────
+# -- 1. Locate the SDK tarball ------------------------------------------------
 Write-Host ''
-Write-Host '[1/5] Locating SDK tarball…'
+Write-Host '[1/5] Locating SDK tarball...'
 $SdkTarball = & "$ScriptDir\04-find-artifact.ps1"
 if (-not $SdkTarball) { Write-Error '04-find-artifact.ps1 returned nothing.' }
 $TarballFilename = Split-Path -Leaf $SdkTarball
 Write-Host "  Using: $SdkTarball"
 
-# ── 2. Stage tarball in Docker build context ───────────────────────────────
+# -- 2. Stage tarball in Docker build context ---------------------------------
 Write-Host ''
-Write-Host '[2/5] Staging tarball into Docker build context…'
+Write-Host '[2/5] Staging tarball into Docker build context...'
 if (-not (Test-Path $DockerContextDir)) {
     New-Item -ItemType Directory -Path $DockerContextDir | Out-Null
 }
 $DestPath = Join-Path $DockerContextDir $TarballFilename
 if (-not (Test-Path $DestPath) -or
     (Get-Item $SdkTarball).LastWriteTime -gt (Get-Item $DestPath).LastWriteTime) {
-    Write-Host "  Copying $TarballFilename  (may take a moment)…"
+    Write-Host "  Copying $TarballFilename  (may take a moment)..."
     Copy-Item -Path $SdkTarball -Destination $DestPath -Force
 } else {
-    Write-Host '  Already up-to-date in context dir — skipping copy.'
+    Write-Host '  Already up-to-date in context dir - skipping copy.'
 }
 Write-Host "  Context: $DockerContextDir"
 
-# ── 3. Register QEMU binfmt for riscv64 ───────────────────────────────────
+# -- 3. Register QEMU binfmt for riscv64 --------------------------------------
 Write-Host ''
-Write-Host '[3/5] Registering QEMU binfmt for riscv64…'
+Write-Host '[3/5] Registering QEMU binfmt for riscv64...'
 docker run --privileged --rm tonistiigi/binfmt --install riscv64
-# Non-zero is OK — may already be registered
+# Non-zero is OK - may already be registered
 Write-Host '  binfmt step complete.'
 
-# ── 4. Build SDK image ─────────────────────────────────────────────────────
+# -- 4. Build SDK image -------------------------------------------------------
 Write-Host ''
-Write-Host "[4/5] Building SDK image: ${IMAGE_NAME}:${IMAGE_TAG_SDK}  (linux/riscv64)…"
+Write-Host "[4/5] Building SDK image: ${IMAGE_NAME}:${IMAGE_TAG_SDK}  (linux/riscv64)..."
 docker buildx build `
     --platform linux/riscv64 `
     --load `
@@ -72,9 +72,9 @@ docker buildx build `
 
 if ($LASTEXITCODE -ne 0) { Write-Error "SDK image build failed (exit $LASTEXITCODE)" }
 
-# ── 5. Build runtime image ─────────────────────────────────────────────────
+# -- 5. Build runtime image ---------------------------------------------------
 Write-Host ''
-Write-Host "[5/5] Building runtime image: ${IMAGE_NAME}:${IMAGE_TAG_RUNTIME}  (linux/riscv64)…"
+Write-Host "[5/5] Building runtime image: ${IMAGE_NAME}:${IMAGE_TAG_RUNTIME}  (linux/riscv64)..."
 docker buildx build `
     --platform linux/riscv64 `
     --load `
@@ -86,7 +86,7 @@ docker buildx build `
 
 if ($LASTEXITCODE -ne 0) { Write-Error "Runtime image build failed (exit $LASTEXITCODE)" }
 
-# ── Summary ────────────────────────────────────────────────────────────────
+# -- Summary ------------------------------------------------------------------
 Write-Host ''
 Write-Host '============================================================'
 Write-Host ' Images built:' -ForegroundColor Green

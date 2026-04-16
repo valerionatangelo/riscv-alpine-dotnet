@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # =============================================================================
-# 04-find-artifact.ps1 — Locate the SDK tarball produced by 03-build-sdk.ps1
+# 04-find-artifact.ps1 - Locate the SDK tarball produced by 03-build-sdk.ps1
 #
 # Mirrors the "List assets directory" + artifact-path pattern from build.yml:
 #   dotnet-src/artifacts/assets/Release/Sdk/*/dotnet-sdk-*-linux-musl-riscv64.tar.gz
@@ -20,7 +20,7 @@ $DotnetDir     = Join-Path $RepoRoot $DOTNET_SRC_DIRNAME
 $ArtifactsBase = Join-Path $DotnetDir 'artifacts'
 
 Write-Host '============================================================' -ForegroundColor Cyan
-Write-Host ' 04-find-artifact.ps1 — Locate SDK tarball'                   -ForegroundColor Cyan
+Write-Host ' 04-find-artifact.ps1 - Locate SDK tarball'                   -ForegroundColor Cyan
 Write-Host '============================================================' -ForegroundColor Cyan
 Write-Host "  Searching under : $ArtifactsBase"
 Write-Host "  Pattern         : dotnet-sdk-*-$RID.tar.gz"

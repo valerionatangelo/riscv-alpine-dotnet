@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # =============================================================================
-# 03-build-sdk.ps1 — Build the .NET SDK for linux-musl-riscv64
+# 03-build-sdk.ps1 - Build the .NET SDK for linux-musl-riscv64
 #
 # Reproduces the "Build" step from build.yml verbatim:
 #
@@ -13,12 +13,12 @@
 #         --branding preview  -p:OfficialBuildId=<YYYYMMDD>.99
 #
 # Notes:
-#   • The prereqs image is x86_64 (--platform linux/amd64) and contains the
+#   - The prereqs image is x86_64 (--platform linux/amd64) and contains the
 #     complete RISC-V cross-compilation toolchain + musl sysroot.
-#   • -sb = source build (fully offline/reproducible)
-#   • --prep generates MSBuild props before the main build
-#   • --clean-while-building removes intermediates early to save disk space
-#   • Expected time: 2–8 hours.  Required disk: ~50 GB free.
+#   - -sb = source build (fully offline/reproducible)
+#   - --prep generates MSBuild props before the main build
+#   - --clean-while-building removes intermediates early to save disk space
+#   - Expected time: 2-8 hours.  Required disk: ~50 GB free.
 #
 # Override: $env:BRANDING = 'release'
 # =============================================================================
@@ -32,7 +32,7 @@ $DotnetDir       = Join-Path $RepoRoot $DOTNET_SRC_DIRNAME
 $OfficialBuildId = (Get-Date -Format 'yyyyMMdd') + '.99'
 
 Write-Host '============================================================'
-Write-Host ' 03-build-sdk.ps1 — Build .NET SDK (linux-musl-riscv64)'
+Write-Host ' 03-build-sdk.ps1 - Build .NET SDK (linux-musl-riscv64)'
 Write-Host '============================================================'
 Write-Host "  Source dir      : $DotnetDir"
 Write-Host "  Prereqs image   : $PREREQS_IMAGE"
@@ -55,12 +55,12 @@ if (-not (Test-Path (Join-Path $DotnetDir '.git'))) {
 $DotnetDirFwd = (Resolve-Path $DotnetDir).Path.Replace('\', '/')
 
 # Pull the prereqs image first so any authentication errors are visible early
-Write-Host 'Pulling prereqs image (may take a few minutes on first run)…'
+Write-Host 'Pulling prereqs image (may take a few minutes on first run)...'
 docker pull --platform linux/amd64 $PREREQS_IMAGE
 if ($LASTEXITCODE -ne 0) { Write-Error "docker pull failed (exit $LASTEXITCODE)" }
 Write-Host ''
 
-Write-Host 'Starting SDK build…'
+Write-Host 'Starting SDK build...'
 docker run `
     --platform linux/amd64 `
     --rm `
