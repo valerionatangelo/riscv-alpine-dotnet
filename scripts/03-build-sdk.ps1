@@ -61,22 +61,39 @@ if ($LASTEXITCODE -ne 0) { Write-Error "docker pull failed (exit $LASTEXITCODE)"
 Write-Host ''
 
 Write-Host 'Starting SDK build...'
-docker run `
-    --platform linux/amd64 `
-    --rm `
-    -v "${DotnetDirFwd}:/dotnet" `
-    -w /dotnet `
-    -e "ROOTFS_DIR=$ROOTFS_DIR" `
-    $PREREQS_IMAGE `
-    ./build.sh `
-        --clean-while-building `
-        --prep `
-        -sb `
-        --os $OS_NAME `
-        --rid $RID `
-        --arch $ARCH `
-        --branding $BRANDING `
-        "-p:OfficialBuildId=$OfficialBuildId"
+
+# Build the argument list as an array to avoid PowerShell quoting issues on Windows.
+#
+# core.fileMode=false is set before the build because the VMR is on a Windows
+# (NTFS) filesystem mounted into Linux: NTFS has no Unix execute bit, so every
+# file appears as 100755 to Linux.  Without this flag the source-build
+# infrastructure git-checks report false "permission changed" errors for .proj
+# files (expected 100644, got 100755) and the build fails.
+$BuildScript = (
+    "git -C /dotnet config core.fileMode false && " +
+    "./build.sh" +
+    " --clean-while-building" +
+    " --prep" +
+    " -sb" +
+    " --os $OS_NAME" +
+    " --rid $RID" +
+    " --arch $ARCH" +
+    " --branding $BRANDING" +
+    " -p:OfficialBuildId=$OfficialBuildId"
+)
+
+$dockerArgs = @(
+    'run',
+    '--platform', 'linux/amd64',
+    '--rm',
+    '-v', "${DotnetDirFwd}:/dotnet",
+    '-w', '/dotnet',
+    '-e', "ROOTFS_DIR=$ROOTFS_DIR",
+    $PREREQS_IMAGE,
+    'bash', '-c', $BuildScript
+)
+
+& docker @dockerArgs
 
 if ($LASTEXITCODE -ne 0) { Write-Error "SDK build failed (exit $LASTEXITCODE)" }
 
