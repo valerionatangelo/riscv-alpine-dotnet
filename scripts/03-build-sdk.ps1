@@ -70,6 +70,12 @@ Write-Host 'Starting SDK build...'
 # infrastructure git-checks report false "permission changed" errors for .proj
 # files (expected 100644, got 100755) and the build fails.
 $BuildScript = (
+    # core.fileMode=false must be set GLOBALLY so it is inherited by every git
+    # invocation during the build, including those run with GIT_DIR=/dev/null
+    # (used by the ApplyPatches MSBuild target in source-build-reference-packages).
+    # A repo-local setting on /dotnet is ignored when GIT_DIR=/dev/null bypasses
+    # normal git-directory discovery.
+    "git config --global core.fileMode false && " +
     "git -C /dotnet config core.fileMode false && " +
     "./build.sh" +
     " --clean-while-building" +
