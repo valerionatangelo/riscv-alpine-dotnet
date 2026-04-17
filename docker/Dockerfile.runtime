@@ -1,5 +1,5 @@
 # =============================================================================
-# Dockerfile.runtime — Alpine riscv64 image with .NET Runtime only (no SDK)
+# Dockerfile.runtime - Alpine riscv64 image with .NET Runtime only (no SDK)
 # =============================================================================
 #
 # Smaller than Dockerfile.sdk.  Uses a two-stage build:
@@ -8,6 +8,7 @@
 #
 # Runtime subset copied:
 #   dotnet                                     host binary
+#   host/fxr/                                  libhostfxr.so (required by host binary)
 #   shared/Microsoft.NETCore.App/<ver>/        CoreCLR runtime
 #   shared/Microsoft.AspNetCore.App/<ver>/     ASP.NET shared framework
 #
@@ -18,7 +19,7 @@
 
 ARG ALPINE_VERSION=edge
 
-# ── Stage 1: extract the full SDK so we can pick pieces from it ───────────────
+# -- Stage 1: extract the full SDK so we can pick pieces from it --------------
 FROM --platform=linux/riscv64 alpine:${ALPINE_VERSION} AS extractor
 
 ARG SDK_TARBALL
@@ -29,7 +30,7 @@ RUN mkdir -p /sdk \
     && rm /tmp/dotnet.tar.gz
 
 
-# ── Stage 2: runtime-only final image ─────────────────────────────────────────
+# -- Stage 2: runtime-only final image ----------------------------------------
 FROM --platform=linux/riscv64 alpine:${ALPINE_VERSION}
 
 RUN apk add --no-cache \
@@ -41,20 +42,24 @@ RUN apk add --no-cache \
         icu-libs \
     && rm -rf /var/cache/apk/*
 
-RUN mkdir -p /opt/dotnet/shared
+RUN mkdir -p /opt/dotnet/shared /opt/dotnet/host
 
-# Copy the host binary and the runtime shared frameworks
+# Copy the host binary, the host resolver (libhostfxr), and the runtime shared
+# frameworks.  host/fxr/ contains libhostfxr.so which the dotnet host binary
+# requires to locate and load the runtime.  Without it every dotnet invocation
+# fails with: Error: [/opt/dotnet/host/fxr] does not exist
 COPY --from=extractor /sdk/dotnet                              /opt/dotnet/dotnet
+COPY --from=extractor /sdk/host/fxr                           /opt/dotnet/host/fxr
 COPY --from=extractor /sdk/shared/Microsoft.NETCore.App        /opt/dotnet/shared/Microsoft.NETCore.App
 # Remove the next line if you only need the base CoreCLR runtime (no ASP.NET)
 COPY --from=extractor /sdk/shared/Microsoft.AspNetCore.App     /opt/dotnet/shared/Microsoft.AspNetCore.App
 
-# ── Environment ────────────────────────────────────────────────────────────────
+# -- Environment --------------------------------------------------------------
 ENV DOTNET_ROOT=/opt/dotnet
 ENV PATH="${PATH}:/opt/dotnet"
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 ENV DOTNET_NOLOGO=1
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
-# ── Default command ────────────────────────────────────────────────────────────
+# -- Default command ----------------------------------------------------------
 CMD ["dotnet", "--info"]

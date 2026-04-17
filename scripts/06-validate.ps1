@@ -43,7 +43,10 @@ function Invoke-Check {
 }
 
 function Test-Image {
-    param([string]$Image)
+    param(
+        [string]$Image,
+        [switch]$IsSdk
+    )
 
     Write-Host ''
     Write-Host ('-' * 60) -ForegroundColor Cyan
@@ -65,8 +68,16 @@ function Test-Image {
     Invoke-Check $Image 'dotnet binary is executable  (ls -la)' `
         'ls -la /opt/dotnet/dotnet'
 
-    Invoke-Check $Image 'dotnet --version' `
-        'dotnet --version'
+    if ($IsSdk) {
+        # dotnet --version prints the SDK version; only valid on SDK images
+        Invoke-Check $Image 'dotnet --version  (SDK)' `
+            'dotnet --version'
+    } else {
+        # Runtime-only images have no SDK so --version fails by design.
+        # Use --list-runtimes instead to confirm the runtime is present.
+        Invoke-Check $Image 'dotnet --list-runtimes  (runtime check)' `
+            'dotnet --list-runtimes'
+    }
 
     Invoke-Check $Image 'dotnet --info' `
         'dotnet --info'
@@ -79,13 +90,18 @@ Write-Host '============================================================'
 $SdkImage     = "${IMAGE_NAME}:${IMAGE_TAG_SDK}"
 $RuntimeImage = "${IMAGE_NAME}:${IMAGE_TAG_RUNTIME}"
 
-foreach ($Img in @($SdkImage, $RuntimeImage)) {
-    $ImageId = docker image ls -q $Img
-    if (-not $ImageId) {
-        Write-Warning "Image '$Img' not found locally - skipping. Run 05-build-image.ps1 first."
-        continue
-    }
-    Test-Image $Img
+$ImageId = docker image ls -q $SdkImage
+if (-not $ImageId) {
+    Write-Warning "Image '$SdkImage' not found locally - skipping. Run 05-build-image.ps1 first."
+} else {
+    Test-Image $SdkImage -IsSdk
+}
+
+$ImageId = docker image ls -q $RuntimeImage
+if (-not $ImageId) {
+    Write-Warning "Image '$RuntimeImage' not found locally - skipping. Run 05-build-image.ps1 first."
+} else {
+    Test-Image $RuntimeImage
 }
 
 Write-Host ''

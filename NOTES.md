@@ -22,10 +22,15 @@ RiscvDotnet\
 │   ├── 04-find-artifact.ps1        Locate the produced tarball (used by 05)
 │   ├── 05-build-image.ps1          Build the Alpine riscv64 Docker images
 │   ├── 06-validate.ps1             Verify dotnet works inside the images
+│   ├── 07-test-helloworld.ps1      Build + run a Hello World app on RISC-V
 │   └── run-all.ps1                 Run every step end-to-end
 ├── docker\
 │   ├── Dockerfile.sdk              Full SDK image  (dotnet-alpine-riscv64:sdk)
-│   └── Dockerfile.runtime          Runtime-only image (dotnet-alpine-riscv64:runtime)
+│   ├── Dockerfile.runtime          Runtime-only image (dotnet-alpine-riscv64:runtime)
+│   └── Dockerfile.helloworld       Two-stage: compile in SDK, run in runtime
+├── hello-world\
+│   ├── HelloWorld.csproj           net11.0 console app
+│   └── Program.cs                  Prints arch, OS, framework info
 └── dotnet-src\                     Created by 01-clone.ps1  (~435 MB clone, git-ignored)
 ```
 
@@ -74,7 +79,8 @@ cd C:\...\RiscvDotnet
 .\scripts\02-patch.ps1           # Apply patch (fast, non-fatal if unneeded)
 .\scripts\03-build-sdk.ps1       # *** 2-8 hours — go get a coffee ***
 .\scripts\05-build-image.ps1     # Build Alpine Docker images (fast)
-.\scripts\06-validate.ps1        # Verify dotnet works
+.\scripts\06-validate.ps1        # Verify dotnet --info works inside both images
+.\scripts\07-test-helloworld.ps1 # Compile + run a Hello World app on RISC-V
 ```
 
 ---
@@ -180,6 +186,42 @@ A passing `06-validate.ps1` run looks like:
   ...
   [PASS]
 ```
+
+---
+
+## Hello World end-to-end test (step 07)
+
+`07-test-helloworld.ps1` verifies the full pipeline by compiling a real .NET
+app inside the SDK image and running it inside the runtime image.
+
+```powershell
+.\scripts\07-test-helloworld.ps1
+```
+
+What it does:
+
+1. Builds `docker/Dockerfile.helloworld` using Docker Buildx for `linux/riscv64`
+2. Stage 1 runs `dotnet publish` inside `dotnet-alpine-riscv64:sdk`
+3. Stage 2 copies the published output into `dotnet-alpine-riscv64:runtime`
+4. Runs the resulting image and checks the output contains `Hello from .NET on RISC-V!` and `riscv64`
+
+Expected output:
+
+```
+  Hello from .NET on RISC-V!
+    Framework : .NET 11.0.0-preview.4.final
+    OS        : Alpine Linux ...
+    Arch      : Riscv64
+    RID       : linux-musl-riscv64
+
+  [PASS] Output contains: 'Hello from .NET on RISC-V!'
+  [PASS] Output contains: 'riscv64'
+
+  Hello World test PASSED - .NET runs on RISC-V Alpine!
+```
+
+The test image is tagged `dotnet-alpine-riscv64:helloworld` and can be
+inspected or pushed like any other Docker image.
 
 ---
 

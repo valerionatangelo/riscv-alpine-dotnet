@@ -46,9 +46,14 @@ $OfficialBuildId = (Get-Date -Format 'yyyyMMdd') + '.99'
 
 # Docker named volumes for NuGet package caches.
 # Using the image name as a prefix keeps volumes associated with this project.
+#
+# Only the NuGet caches need a real Linux volume.  The bootstrap SDK (.dotnet/)
+# is installed via tar (not NuGet), works fine on the Windows bind-mount, and
+# must NOT be a Docker volume: an empty volume creates an empty .dotnet/ dir,
+# which tricks prep-source-build.sh into running .dotnet/dotnet before it is
+# installed, crashing with exit 127.
 $VolPackages     = "${IMAGE_NAME}-dotnet-packages"
 $VolSbrpPackages = "${IMAGE_NAME}-sbrp-packages"
-$VolDotnetSdk    = "${IMAGE_NAME}-dotnet-sdk"
 
 Write-Host '============================================================'
 Write-Host ' 03-build-sdk.ps1 - Build .NET SDK (linux-musl-riscv64)'
@@ -61,7 +66,6 @@ Write-Host "  Branding        : $BRANDING"
 Write-Host "  OfficialBuildId : $OfficialBuildId"
 Write-Host "  Vol (.packages) : $VolPackages"
 Write-Host "  Vol (sbrp pkgs) : $VolSbrpPackages"
-Write-Host "  Vol (.dotnet)   : $VolDotnetSdk"
 Write-Host ''
 Write-Host '  *** This build typically takes 2-8 hours. ***'
 Write-Host '  *** Ensure at least 50 GB of free disk space in Docker Desktop. ***'
@@ -99,6 +103,23 @@ Write-Host 'Starting SDK build...'
 #    exist before the bind-mount of /dotnet (which might create empty dirs on
 #    the Windows side).  This is defensive; Docker usually handles this.
 $BuildScript = (
+    # If .dotnet/ exists but has no dotnet binary, remove it.
+    # Docker creates an empty directory on the Windows bind-mount as a mount-point
+    # when a named volume was previously attached there; after that volume is
+    # removed the empty dir remains.  prep-source-build.sh checks [ -d .dotnet ]
+    # and immediately tries to run .dotnet/dotnet without verifying the binary
+    # exists, causing exit 127.  Deleting the empty dir lets the prep script
+    # install the SDK from scratch as intended.
+    "( [ -d /dotnet/.dotnet ] && [ ! -f /dotnet/.dotnet/dotnet ] && rm -rf /dotnet/.dotnet ) ; " +
+    # Several repos (nuget-client, templating, roslyn, aspnetcore, sdk, ...) enforce
+    # IDE0055 (Fix formatting) as a build error.  Source files were checked out on
+    # Windows with CRLF line endings; the Roslyn formatter on Linux sees \r as
+    # trailing whitespace and fails.  Strip \r from all C#/F#/VB source files
+    # across the entire source tree once before the build starts.
+    # xargs -P4 runs 4 sed processes in parallel to keep this under ~2 minutes.
+    "echo 'Stripping CRLF from all source files (one-time, may take ~2 min)...' && " +
+    "find /dotnet/src -name '*.cs' -o -name '*.fs' -o -name '*.vb' | xargs -P4 -r sed -i 's/\r//' 2>/dev/null ; " +
+    "echo 'CRLF strip done.' && " +
     "git config --global core.fileMode false && " +
     "git -C /dotnet config core.fileMode false && " +
     "./build.sh" +
@@ -124,7 +145,6 @@ $dockerArgs = @(
     '--rm',
     '-v', "${DotnetDirFwd}:/dotnet",
     '-v', "${VolPackages}:/dotnet/.packages",
-    '-v', "${VolDotnetSdk}:/dotnet/.dotnet",
     '-v', "${VolSbrpPackages}:/dotnet/src/source-build-reference-packages/artifacts/.packages",
     '-w', '/dotnet',
     '-e', "ROOTFS_DIR=$ROOTFS_DIR",
@@ -137,4 +157,6 @@ $dockerArgs = @(
 if ($LASTEXITCODE -ne 0) { Write-Error "SDK build failed (exit $LASTEXITCODE)" }
 
 Write-Host ''
-Write-Host 'Build finished. Run 05-build-image.ps1 to package the Alpine Docker image.'
+Write-Host 'Build finished. Next steps:'
+Write-Host '  .\scripts\04-find-artifact.ps1   # locate and verify the SDK tarball'
+Write-Host '  .\scripts\05-build-image.ps1     # build the Alpine riscv64 Docker image'

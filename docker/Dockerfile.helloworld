@@ -1,0 +1,38 @@
+# =============================================================================
+# Dockerfile.helloworld - Build and run a Hello World .NET app on RISC-V Alpine
+#
+# Two-stage build:
+#   Stage 1 (build): uses the locally-built SDK image to compile and publish
+#                    the app framework-dependent for linux-musl-riscv64
+#   Stage 2 (run):   copies the published output into the runtime image
+#
+# Both base images are expected to already exist locally (built by scripts
+# 05-build-image.ps1).  No internet access is required.
+#
+# Build args (with defaults matching config.ps1):
+#   SDK_IMAGE     - source SDK image       (default: dotnet-alpine-riscv64:sdk)
+#   RUNTIME_IMAGE - destination base image (default: dotnet-alpine-riscv64:runtime)
+# =============================================================================
+
+ARG SDK_IMAGE=dotnet-alpine-riscv64:sdk
+ARG RUNTIME_IMAGE=dotnet-alpine-riscv64:runtime
+
+# -- Stage 1: build -----------------------------------------------------------
+FROM --platform=linux/riscv64 ${SDK_IMAGE} AS build
+
+WORKDIR /src
+COPY hello-world/ .
+
+RUN dotnet publish HelloWorld.csproj \
+        -c Release \
+        -r linux-musl-riscv64 \
+        --no-self-contained \
+        -o /app/publish
+
+# -- Stage 2: run -------------------------------------------------------------
+FROM --platform=linux/riscv64 ${RUNTIME_IMAGE}
+
+WORKDIR /app
+COPY --from=build /app/publish .
+
+ENTRYPOINT ["dotnet", "HelloWorld.dll"]

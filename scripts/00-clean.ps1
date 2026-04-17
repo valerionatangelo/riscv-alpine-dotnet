@@ -71,8 +71,7 @@ if ($Full) {
     # and must be cleaned explicitly when starting fresh.
     foreach ($Vol in @(
         "${IMAGE_NAME}-dotnet-packages",
-        "${IMAGE_NAME}-sbrp-packages",
-        "${IMAGE_NAME}-dotnet-sdk"
+        "${IMAGE_NAME}-sbrp-packages"
     )) {
         $VolExists = docker volume ls -q --filter "name=^${Vol}$"
         if ($VolExists) {
