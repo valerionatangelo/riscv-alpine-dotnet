@@ -25,8 +25,9 @@ RiscvDotnet\
 │   ├── 07-test-helloworld.ps1      Build + run a Hello World app on RISC-V
 │   └── run-all.ps1                 Run every step end-to-end
 ├── docker\
-│   ├── Dockerfile.sdk              Full SDK image  (dotnet-alpine-riscv64:sdk)
-│   ├── Dockerfile.runtime          Runtime-only image (dotnet-alpine-riscv64:runtime)
+│   ├── Dockerfile.sdk              Full SDK image         (dotnet-alpine-riscv64:sdk)
+│   ├── Dockerfile.runtime          CoreCLR-only image     (dotnet-alpine-riscv64:runtime)
+│   ├── Dockerfile.aspnet           runtime + ASP.NET Core (dotnet-alpine-riscv64:aspnet)
 │   └── Dockerfile.helloworld       Two-stage: compile in SDK, run in runtime
 ├── hello-world\
 │   ├── HelloWorld.csproj           net11.0 console app
@@ -153,17 +154,24 @@ a warning, not an error, because the fix may already be merged upstream.
 
 ## The Docker images
 
-### `dotnet-alpine-riscv64:sdk`
-- Base: `alpine:edge` (riscv64, via QEMU on x86 host)
-- Deps: `libssl3  libgcc  libstdc++  zlib  icu-libs`
-- Full .NET SDK extracted to `/opt/dotnet`
-- `DOTNET_ROOT=/opt/dotnet`, `/opt/dotnet` in `PATH`
+Three images are produced, mirroring Microsoft's official image naming:
 
-### `dotnet-alpine-riscv64:runtime`
-- Same base + deps
-- Two-stage build: only copies `dotnet` binary and `shared/` runtime frameworks
-- Noticeably smaller than the SDK image
-- Use for running compiled apps, not building them
+### `dotnet-alpine-riscv64:runtime`  (~154 MB)
+- CoreCLR runtime only (`Microsoft.NETCore.App`)
+- Native `.so` files stripped of debug symbols
+- Diagnostic libs removed (`libmscordaccore`, `libmscordbi`, `createdump`)
+- Globalization invariant mode enabled (no `icu-libs`)
+- Use for: console apps, worker services, anything targeting `net11.0`
+
+### `dotnet-alpine-riscv64:aspnet`  (~182 MB)
+- Builds on top of the `runtime` image
+- Adds `Microsoft.AspNetCore.App` shared framework
+- Use for: ASP.NET Core web apps, minimal APIs, Blazor Server
+
+### `dotnet-alpine-riscv64:sdk`  (~600 MB+)
+- Full SDK: MSBuild, Roslyn compiler, NuGet, templates
+- Full globalization support (`icu-libs` included)
+- Use for: building apps, CI pipelines, interactive development
 
 ---
 
@@ -250,7 +258,7 @@ What each level removes:
 |---|---|
 | *(none)* | `dotnet-src\artifacts\`, `dotnet-src\.packages\`, `dotnet-src\.dotnet\`, `docker\context\` |
 | `-Full` | Everything above **+** the `dotnet-src\` clone itself |
-| `-Images` | Everything above **+** `dotnet-alpine-riscv64:sdk` and `:runtime` images |
+| `-Images` | Everything above **+** `dotnet-alpine-riscv64:runtime`, `:aspnet`, and `:sdk` images |
 | `-Full -Images` | Complete reset |
 
 You can also pass flags to `run-all.ps1` to clean before the pipeline runs:

@@ -1,0 +1,51 @@
+# =============================================================================
+# Dockerfile.aspnet - Alpine riscv64 image with .NET Runtime + ASP.NET Core
+# =============================================================================
+#
+# Builds on top of the runtime image (dotnet-alpine-riscv64:runtime) and adds
+# the Microsoft.AspNetCore.App shared framework.  The runtime image must already
+# exist locally before building this one (run 05-build-image.ps1 in order).
+#
+# Layer structure:
+#   dotnet-alpine-riscv64:runtime   CoreCLR runtime  (~154 MB)
+#   + Microsoft.AspNetCore.App      ASP.NET Core      (~ 28 MB)
+#   = dotnet-alpine-riscv64:aspnet                   (~182 MB)
+#
+# Use this image for:
+#   - ASP.NET Core web applications
+#   - Any app that references Microsoft.AspNetCore.* packages
+#
+# Use dotnet-alpine-riscv64:runtime instead for:
+#   - Console apps
+#   - Worker services
+#   - Any app that only uses Microsoft.NETCore.App
+#
+# =============================================================================
+
+ARG RUNTIME_IMAGE=dotnet-alpine-riscv64:runtime
+ARG ALPINE_VERSION=edge
+
+# -- Stage 1: extract ASP.NET files from the SDK tarball ----------------------
+# NOTE: BusyBox tar (Alpine) does not support --wildcards, so we extract the
+# full tarball into a temp directory, move only what we need, then delete the
+# rest.  This avoids the "not found" error caused by silent wildcard failures.
+FROM alpine:${ALPINE_VERSION} AS extractor
+
+ARG SDK_TARBALL
+COPY ${SDK_TARBALL} /tmp/dotnet.tar.gz
+
+RUN apk add --no-cache binutils \
+    && mkdir -p /tmp/full /sdk/shared \
+    && tar -xzf /tmp/dotnet.tar.gz -C /tmp/full \
+    && mv /tmp/full/shared/Microsoft.AspNetCore.App /sdk/shared/ \
+    && rm -rf /tmp/full /tmp/dotnet.tar.gz \
+    # Strip debug symbols from ASP.NET native libraries
+    && find /sdk/shared/Microsoft.AspNetCore.App -name '*.so' \
+       -exec strip --strip-debug {} \; 2>/dev/null || true
+
+
+# -- Stage 2: add ASP.NET Core on top of the runtime image --------------------
+FROM ${RUNTIME_IMAGE}
+
+COPY --from=extractor /sdk/shared/Microsoft.AspNetCore.App \
+                      /opt/dotnet/shared/Microsoft.AspNetCore.App

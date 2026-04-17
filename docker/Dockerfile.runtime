@@ -26,8 +26,9 @@
 # Runtime subset copied:
 #   dotnet                                     host binary
 #   host/fxr/                                  libhostfxr.so (required by host binary)
-#   shared/Microsoft.NETCore.App/<ver>/        CoreCLR runtime
-#   shared/Microsoft.AspNetCore.App/<ver>/     ASP.NET shared framework
+#   shared/Microsoft.NETCore.App/<ver>/        CoreCLR runtime only
+#
+# For ASP.NET Core support use Dockerfile.aspnet (adds Microsoft.AspNetCore.App).
 #
 # =============================================================================
 
@@ -90,8 +91,6 @@ RUN mkdir -p /opt/dotnet/shared /opt/dotnet/host
 COPY --from=extractor /sdk/dotnet                              /opt/dotnet/dotnet
 COPY --from=extractor /sdk/host/fxr                           /opt/dotnet/host/fxr
 COPY --from=extractor /sdk/shared/Microsoft.NETCore.App        /opt/dotnet/shared/Microsoft.NETCore.App
-# Remove the next line if you only need the base CoreCLR runtime (no ASP.NET)
-COPY --from=extractor /sdk/shared/Microsoft.AspNetCore.App     /opt/dotnet/shared/Microsoft.AspNetCore.App
 
 # -- Environment --------------------------------------------------------------
 ENV DOTNET_ROOT=/opt/dotnet

@@ -36,3 +36,4 @@ $ALPINE_VERSION    = if ($env:ALPINE_VERSION)    { $env:ALPINE_VERSION }    else
 $IMAGE_NAME        = if ($env:IMAGE_NAME)        { $env:IMAGE_NAME }        else { 'dotnet-alpine-riscv64' }
 $IMAGE_TAG_SDK     = if ($env:IMAGE_TAG_SDK)     { $env:IMAGE_TAG_SDK }     else { 'sdk' }
 $IMAGE_TAG_RUNTIME = if ($env:IMAGE_TAG_RUNTIME) { $env:IMAGE_TAG_RUNTIME } else { 'runtime' }
+$IMAGE_TAG_ASPNET  = if ($env:IMAGE_TAG_ASPNET)  { $env:IMAGE_TAG_ASPNET }  else { 'aspnet' }

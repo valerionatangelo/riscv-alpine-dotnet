@@ -2,15 +2,10 @@
 # =============================================================================
 # 05-build-image.ps1 - Build Alpine riscv64 Docker images from the SDK tarball
 #
-# Steps:
-#   1. Locate the SDK tarball (calls 04-find-artifact.ps1)
-#   2. Stage it into docker\context\
-#   3. Register QEMU binfmt for riscv64 (needed to run the final image on x86)
-#   4. Build the SDK image    (dotnet-alpine-riscv64:sdk)
-#   5. Build the runtime image (dotnet-alpine-riscv64:runtime)
-#
-# Note: The SDK *build* (step 3) runs as linux/amd64 (no QEMU needed).
-#       QEMU is only needed to RUN the final riscv64 Alpine image on an x86 host.
+# Builds three images in dependency order:
+#   1. dotnet-alpine-riscv64:runtime  - CoreCLR only       (~154 MB)
+#   2. dotnet-alpine-riscv64:aspnet   - runtime + ASP.NET  (~182 MB)
+#   3. dotnet-alpine-riscv64:sdk      - full SDK           (~600 MB+)
 #
 # Override: $env:IMAGE_NAME = "my-dotnet";  $env:ALPINE_VERSION = "3.21"
 # =============================================================================
@@ -29,7 +24,7 @@ Write-Host '============================================================'
 
 # -- 1. Locate the SDK tarball ------------------------------------------------
 Write-Host ''
-Write-Host '[1/5] Locating SDK tarball...'
+Write-Host '[1/6] Locating SDK tarball...'
 $SdkTarball = & "$ScriptDir\04-find-artifact.ps1"
 if (-not $SdkTarball) { Write-Error '04-find-artifact.ps1 returned nothing.' }
 $TarballFilename = Split-Path -Leaf $SdkTarball
@@ -37,7 +32,7 @@ Write-Host "  Using: $SdkTarball"
 
 # -- 2. Stage tarball in Docker build context ---------------------------------
 Write-Host ''
-Write-Host '[2/5] Staging tarball into Docker build context...'
+Write-Host '[2/6] Staging tarball into Docker build context...'
 if (-not (Test-Path $DockerContextDir)) {
     New-Item -ItemType Directory -Path $DockerContextDir | Out-Null
 }
@@ -53,28 +48,14 @@ Write-Host "  Context: $DockerContextDir"
 
 # -- 3. Register QEMU binfmt for riscv64 --------------------------------------
 Write-Host ''
-Write-Host '[3/5] Registering QEMU binfmt for riscv64...'
+Write-Host '[3/6] Registering QEMU binfmt for riscv64...'
 docker run --privileged --rm tonistiigi/binfmt --install riscv64
 # Non-zero is OK - may already be registered
 Write-Host '  binfmt step complete.'
 
-# -- 4. Build SDK image -------------------------------------------------------
+# -- 4. Build runtime image ---------------------------------------------------
 Write-Host ''
-Write-Host "[4/5] Building SDK image: ${IMAGE_NAME}:${IMAGE_TAG_SDK}  (linux/riscv64)..."
-docker buildx build `
-    --platform linux/riscv64 `
-    --load `
-    --build-arg "SDK_TARBALL=$TarballFilename" `
-    --build-arg "ALPINE_VERSION=$ALPINE_VERSION" `
-    -t "${IMAGE_NAME}:${IMAGE_TAG_SDK}" `
-    -f "$DockerDir\Dockerfile.sdk" `
-    $DockerContextDir
-
-if ($LASTEXITCODE -ne 0) { Write-Error "SDK image build failed (exit $LASTEXITCODE)" }
-
-# -- 5. Build runtime image ---------------------------------------------------
-Write-Host ''
-Write-Host "[5/5] Building runtime image: ${IMAGE_NAME}:${IMAGE_TAG_RUNTIME}  (linux/riscv64)..."
+Write-Host "[4/6] Building runtime image: ${IMAGE_NAME}:${IMAGE_TAG_RUNTIME}  (linux/riscv64)..."
 docker buildx build `
     --platform linux/riscv64 `
     --load `
@@ -85,6 +66,35 @@ docker buildx build `
     $DockerContextDir
 
 if ($LASTEXITCODE -ne 0) { Write-Error "Runtime image build failed (exit $LASTEXITCODE)" }
+
+# -- 5. Build aspnet image ----------------------------------------------------
+Write-Host ''
+Write-Host "[5/6] Building aspnet image: ${IMAGE_NAME}:${IMAGE_TAG_ASPNET}  (linux/riscv64)..."
+docker buildx build `
+    --platform linux/riscv64 `
+    --load `
+    --build-arg "SDK_TARBALL=$TarballFilename" `
+    --build-arg "ALPINE_VERSION=$ALPINE_VERSION" `
+    --build-arg "RUNTIME_IMAGE=${IMAGE_NAME}:${IMAGE_TAG_RUNTIME}" `
+    -t "${IMAGE_NAME}:${IMAGE_TAG_ASPNET}" `
+    -f "$DockerDir\Dockerfile.aspnet" `
+    $DockerContextDir
+
+if ($LASTEXITCODE -ne 0) { Write-Error "Aspnet image build failed (exit $LASTEXITCODE)" }
+
+# -- 6. Build SDK image -------------------------------------------------------
+Write-Host ''
+Write-Host "[6/6] Building SDK image: ${IMAGE_NAME}:${IMAGE_TAG_SDK}  (linux/riscv64)..."
+docker buildx build `
+    --platform linux/riscv64 `
+    --load `
+    --build-arg "SDK_TARBALL=$TarballFilename" `
+    --build-arg "ALPINE_VERSION=$ALPINE_VERSION" `
+    -t "${IMAGE_NAME}:${IMAGE_TAG_SDK}" `
+    -f "$DockerDir\Dockerfile.sdk" `
+    $DockerContextDir
+
+if ($LASTEXITCODE -ne 0) { Write-Error "SDK image build failed (exit $LASTEXITCODE)" }
 
 # -- Summary ------------------------------------------------------------------
 Write-Host ''

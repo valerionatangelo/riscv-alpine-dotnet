@@ -10,7 +10,7 @@
 #   dotnet --version - must print a version string
 #   dotnet --info    - must show full SDK/runtime details
 #
-# Override: $env:IMAGE_NAME, $env:IMAGE_TAG_SDK, $env:IMAGE_TAG_RUNTIME
+# Override: $env:IMAGE_NAME, $env:IMAGE_TAG_SDK, $env:IMAGE_TAG_RUNTIME, $env:IMAGE_TAG_ASPNET
 # =============================================================================
 $ErrorActionPreference = 'Stop'
 
@@ -45,7 +45,8 @@ function Invoke-Check {
 function Test-Image {
     param(
         [string]$Image,
-        [switch]$IsSdk
+        [switch]$IsSdk,
+        [switch]$HasAspNet
     )
 
     Write-Host ''
@@ -79,6 +80,11 @@ function Test-Image {
             'dotnet --list-runtimes'
     }
 
+    if ($HasAspNet) {
+        Invoke-Check $Image 'ASP.NET Core runtime present' `
+            'test -d /opt/dotnet/shared/Microsoft.AspNetCore.App'
+    }
+
     Invoke-Check $Image 'dotnet --info' `
         'dotnet --info'
 }
@@ -89,19 +95,27 @@ Write-Host '============================================================'
 
 $SdkImage     = "${IMAGE_NAME}:${IMAGE_TAG_SDK}"
 $RuntimeImage = "${IMAGE_NAME}:${IMAGE_TAG_RUNTIME}"
-
-$ImageId = docker image ls -q $SdkImage
-if (-not $ImageId) {
-    Write-Warning "Image '$SdkImage' not found locally - skipping. Run 05-build-image.ps1 first."
-} else {
-    Test-Image $SdkImage -IsSdk
-}
+$AspNetImage  = "${IMAGE_NAME}:${IMAGE_TAG_ASPNET}"
 
 $ImageId = docker image ls -q $RuntimeImage
 if (-not $ImageId) {
     Write-Warning "Image '$RuntimeImage' not found locally - skipping. Run 05-build-image.ps1 first."
 } else {
     Test-Image $RuntimeImage
+}
+
+$ImageId = docker image ls -q $AspNetImage
+if (-not $ImageId) {
+    Write-Warning "Image '$AspNetImage' not found locally - skipping. Run 05-build-image.ps1 first."
+} else {
+    Test-Image $AspNetImage -HasAspNet
+}
+
+$ImageId = docker image ls -q $SdkImage
+if (-not $ImageId) {
+    Write-Warning "Image '$SdkImage' not found locally - skipping. Run 05-build-image.ps1 first."
+} else {
+    Test-Image $SdkImage -IsSdk -HasAspNet
 }
 
 Write-Host ''

@@ -2,25 +2,28 @@
 # Dockerfile.sdk - Alpine riscv64 image with the full .NET SDK
 # =============================================================================
 #
-# Built by 05-build-image.ps1, or manually:
-#
-#   # Stage the tarball
-#   New-Item -ItemType Directory docker\context -Force
-#   Copy-Item dotnet-src\artifacts\...\dotnet-sdk-*-linux-musl-riscv64.tar.gz docker\context\
-#
-#   # Register QEMU (if not already done)
-#   docker run --privileged --rm tonistiigi/binfmt --install riscv64
-#
-#   # Build
-#   docker buildx build `
-#     --platform linux/riscv64 --load `
-#     --build-arg SDK_TARBALL=dotnet-sdk-<ver>-linux-musl-riscv64.tar.gz `
-#     -t dotnet-alpine-riscv64:sdk `
-#     -f docker\Dockerfile.sdk docker\context\
+# Uses a two-stage build to avoid storing both the compressed tarball and the
+# extracted content in the same layer (which would double the image size):
+#   Stage 1 (extractor): extracts the SDK tarball
+#   Stage 2 (final):     copies /opt/dotnet from the extractor
 #
 # =============================================================================
 
 ARG ALPINE_VERSION=edge
+
+# -- Stage 1: extract the SDK tarball -----------------------------------------
+FROM alpine:${ALPINE_VERSION} AS extractor
+
+ARG SDK_TARBALL
+COPY ${SDK_TARBALL} /tmp/dotnet.tar.gz
+
+RUN mkdir -p /opt/dotnet \
+    && tar -xzf /tmp/dotnet.tar.gz -C /opt/dotnet \
+    && rm /tmp/dotnet.tar.gz \
+    && test -x /opt/dotnet/dotnet
+
+
+# -- Stage 2: final image ------------------------------------------------------
 FROM alpine:${ALPINE_VERSION}
 
 # -- Native runtime dependencies ----------------------------------------------
@@ -39,14 +42,7 @@ RUN apk add --no-cache \
     && rm -rf /var/cache/apk/*
 
 # -- Install the SDK ----------------------------------------------------------
-ARG SDK_TARBALL
-COPY ${SDK_TARBALL} /tmp/dotnet.tar.gz
-
-RUN mkdir -p /opt/dotnet \
-    && tar -xzf /tmp/dotnet.tar.gz -C /opt/dotnet \
-    && rm /tmp/dotnet.tar.gz \
-    # Smoke-test: binary must be present after extraction
-    && test -x /opt/dotnet/dotnet
+COPY --from=extractor /opt/dotnet /opt/dotnet
 
 # -- Environment --------------------------------------------------------------
 ENV DOTNET_ROOT=/opt/dotnet
