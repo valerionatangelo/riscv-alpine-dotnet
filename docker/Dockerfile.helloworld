@@ -18,7 +18,7 @@ ARG SDK_IMAGE=dotnet-alpine-riscv64:sdk
 ARG RUNTIME_IMAGE=dotnet-alpine-riscv64:runtime
 
 # -- Stage 1: build -----------------------------------------------------------
-FROM --platform=linux/riscv64 ${SDK_IMAGE} AS build
+FROM ${SDK_IMAGE} AS build
 
 WORKDIR /src
 COPY hello-world/ .
@@ -30,7 +30,7 @@ RUN dotnet publish HelloWorld.csproj \
         -o /app/publish
 
 # -- Stage 2: run -------------------------------------------------------------
-FROM --platform=linux/riscv64 ${RUNTIME_IMAGE}
+FROM ${RUNTIME_IMAGE}
 
 WORKDIR /app
 COPY --from=build /app/publish .
