@@ -3,8 +3,25 @@
 # =============================================================================
 #
 # Smaller than Dockerfile.sdk.  Uses a two-stage build:
-#   Stage 1 (extractor): expands the SDK tarball
+#   Stage 1 (extractor): expands the SDK tarball and applies size optimizations
 #   Stage 2 (final):     copies only the runtime components
+#
+# Size optimizations applied in stage 1 (source builds include full debug info):
+#   - strip --strip-debug on all .so files        (~200 MB saved)
+#   - remove libmscordaccore.so  (debugger DAC)   (~ 71 MB saved)
+#   - remove libmscordbi.so      (debugger iface)  (~ 16 MB saved)
+#   - remove libcoreclrtraceptprovider.so          (~  2 MB saved)
+#   - remove createdump binary                     (~  2 MB saved)
+#
+# Globalization invariant mode (DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=true):
+#   - removes the icu-libs APK dependency          (~ 33 MB saved)
+#   - apps that rely on locale-sensitive operations
+#     (e.g. culture-aware date/number formatting)  MAY break
+#   - to restore full ICU support: set the build arg INVARIANT_GLOBALIZATION=false
+#     and add icu-libs back to the apk install below
+#
+# To keep diagnostic libraries (for dotnet-dump / debugging):
+#   Set build arg KEEP_DIAGNOSTICS=true
 #
 # Runtime subset copied:
 #   dotnet                                     host binary
@@ -12,26 +29,49 @@
 #   shared/Microsoft.NETCore.App/<ver>/        CoreCLR runtime
 #   shared/Microsoft.AspNetCore.App/<ver>/     ASP.NET shared framework
 #
-# SDK tools (MSBuild, Roslyn compiler, NuGet, etc.) are NOT included.
-# Use this image for running compiled .NET applications, not building them.
-#
 # =============================================================================
 
 ARG ALPINE_VERSION=edge
+ARG INVARIANT_GLOBALIZATION=true
+ARG KEEP_DIAGNOSTICS=false
 
-# -- Stage 1: extract the full SDK so we can pick pieces from it --------------
+# -- Stage 1: extract and optimise --------------------------------------------
 FROM --platform=linux/riscv64 alpine:${ALPINE_VERSION} AS extractor
+
+ARG KEEP_DIAGNOSTICS
 
 ARG SDK_TARBALL
 COPY ${SDK_TARBALL} /tmp/dotnet.tar.gz
 
-RUN mkdir -p /sdk \
+RUN apk add --no-cache binutils \
+    && mkdir -p /sdk \
     && tar -xzf /tmp/dotnet.tar.gz -C /sdk \
-    && rm /tmp/dotnet.tar.gz
+    && rm /tmp/dotnet.tar.gz \
+    \
+    # Strip DWARF debug info from all native libraries.
+    # Source builds are compiled with full debug symbols; stripping saves ~200 MB.
+    # --strip-debug removes .debug_* sections but keeps the dynamic symbol table
+    # required for runtime dynamic linking.
+    && find /sdk/shared -name '*.so' -exec strip --strip-debug {} \; \
+    && strip --strip-debug /sdk/host/fxr/*/libhostfxr.so 2>/dev/null || true \
+    \
+    # Remove diagnostic-only libraries unless KEEP_DIAGNOSTICS=true.
+    # libmscordaccore.so  - Data Access Component used by dotnet-dump / debuggers
+    # libmscordbi.so      - Debugger interface (ICorDebug)
+    # libcoreclrtraceptprovider.so - EventPipe/ETW tracing provider
+    # createdump          - Crash dump utility
+    && if [ "${KEEP_DIAGNOSTICS}" != "true" ]; then \
+         find /sdk/shared -name 'libmscordaccore.so' -delete ; \
+         find /sdk/shared -name 'libmscordbi.so' -delete ; \
+         find /sdk/shared -name 'libcoreclrtraceptprovider.so' -delete ; \
+         find /sdk/shared -name 'createdump' -delete ; \
+       fi
 
 
 # -- Stage 2: runtime-only final image ----------------------------------------
 FROM --platform=linux/riscv64 alpine:${ALPINE_VERSION}
+
+ARG INVARIANT_GLOBALIZATION
 
 RUN apk add --no-cache \
         ca-certificates \
@@ -39,7 +79,6 @@ RUN apk add --no-cache \
         libgcc \
         libstdc++ \
         zlib \
-        icu-libs \
     && rm -rf /var/cache/apk/*
 
 RUN mkdir -p /opt/dotnet/shared /opt/dotnet/host
@@ -59,7 +98,11 @@ ENV DOTNET_ROOT=/opt/dotnet
 ENV PATH="${PATH}:/opt/dotnet"
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 ENV DOTNET_NOLOGO=1
-ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+
+# Globalization invariant mode: set to true by default to avoid the ~33 MB
+# icu-libs dependency.  Set INVARIANT_GLOBALIZATION=false at build time and
+# add icu-libs to the apk install above to restore full ICU support.
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=${INVARIANT_GLOBALIZATION}
 
 # -- Default command ----------------------------------------------------------
 CMD ["dotnet", "--info"]
